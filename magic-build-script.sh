@@ -52,76 +52,15 @@ add_ppa() {
   return 1
 }
 
-declare -a LLVM_REPO_RA=("deb http://llvm.org/apt/trusty llvm-toolchain-trusty main"
-  "deb http://llvm.org/apt/trusty/ llvm-toolchain-trusty-3.6 main")
-# Clang 3.5:
-# "deb http://llvm.org/apt/trusty llvm-toolchain-trusty-3.5 main"
-
-declare -a INSTALL_RA=("git" "cmake" "subversion" "mercurial")
-
-print_info "Adding repos"
-# LLVM nighly package - 3.6
-for r in "${LLVM_REPO_RA[@]}"; do
-  add_ppa "$r"
-done
-
+declare -a INSTALL_RA=("git" "cmake" "subversion" "mercurial" "gparted"
+"build-essential" "git-svn" "kpartx" "libglib2.0-dev" "patch" "quilt"
+"rsync" "zlib1g-dev" "flex" "libfdt1" "libfdt-dev" "libpixman-1-0"
+"libpixman-1-dev" "libc6:i386" "libncurses5:i386" "linaro-image-tools")
 
 print_info "Installing git and dependencies"
 for p in "${INSTALL_RA[@]}"; do
   install-pkg "$p"
 done
-
-print_info "Installing clang and LLVM from source to $(pwd)"
-print_info "Getting LLVM"
-cd ${SCRIPT_ROOT}
-if [ ! -d "llvm" ]; then
-  print_clone_to "LLVM" "llvm" 
-  svn co http://llvm.org/svn/llvm-project/llvm/trunk llvm
-fi
-  print_src_found "LLVM" "llvm"
-
-print_info "Getting Clang"
-cd ${SCRIPT_ROOT}/llvm/tools
-if [ ! -d "clang" ]; then
-  print_clone_to "Clang""clang"
-  svn co http://llvm.org/svn/llvm-project/cfe/trunk clang
-else
-  print_src_found "Clang" "clang"
-fi
-
-print_info "Getting Clang extra tools"
-cd ${SCRIPT_ROOT}/llvm/tools/clang/tools
-# Check out extra Clang tools
-if [ ! -d "extra" ]; then
-  print_clone_to "Clang extra tools" "extra"
-  svn co http://llvm.org/svn/llvm-project/clang-tools-extra/trunk extra
-else
-  print_src_found "Clang extra tools" "extra"
-fi
-
-print_info "Getting compiler-rt"
-cd ${SCRIPT_ROOT}/llvm/projects
-if [ ! -d "compiler-rt" ]; then
-  print_clone_to "compiler-rt" "compiler-rt"
-  svn co http://llvm.org/svn/llvm-project/compiler-rt/trunk compiler-rt
-else
-  print_src_found "compiler-rt" "compiler-rt"
-fi
-
-##
-# Copy SSH key.
-##
-
-cd ${HOME}
-print_info "Copying SSH key to $(pwd)/.ssh"
-if [ ! -d ".ssh" ]; then
-  cp ${SCRIPT_ROOT}/ssh/* ~/.ssh/ 2>/dev/null || :
-  chmod -f 0600 ${HOME}/.ssh/id_rsa*
-  chmod -f 0600 ${HOME}/.ssh/known_hosts
-  echo "Done copying SSH key"
-else
-  echo "Already copied"
-fi
 
 cd ${FETCH_ROOT}
 print_info "Getting Slice"
@@ -135,75 +74,49 @@ else
 fi
 print_info "Copying Slice to LLVM - $SCRIPT_ROOT/llvm/lib/Transforms/Slice"
 cp -r ${FETCH_ROOT}/xen-slicing-pq.hg/Slice ${SCRIPT_ROOT}/llvm/lib/Transforms/
- 
 
-# LLVMLinux kernel tree - recent mainline with latest LLVMLinux patches applied
+
+print_info "Getting LLVM Linux"
 cd ${SCRIPT_ROOT}
-if [ ! -d "kernel" ]; then
-  NOW=$(date)
-  LATER=$(date -d "$NOW +20 min" +"%H:%M")
-  print_info "git clone LLVMLinux into $(pwd)/kernel; please check back at about $LATER"
-  git clone git://git.linuxfoundation.org/llvmlinux/kernel.git
-  print_info "LLVMLinux repo cloned. Getting makefile"
-  cd ${SCRIPT_ROOT}/kernel
-  wget http://buildbot.llvm.linuxfoundation.org/makefile
-  echo "$SCRIPT_ROOT/kernel/makefile default is to use clang; edit further for other options if needed."
+if [ ! -d "llvmlinux" ]; then
+  print_clone_to "LLVM Linux" "llvmlinux"
+  git clone http://git.linuxfoundation.org/llvmlinux.git
 else
-  echo "LLVMLinux has been cloned in $SCRIPT_ROOT/kernel/"
+  print_src_found "LLVM Linux" "llvmlinux"
 fi
 
-# Do buidls
-cd ${SCRIPT_ROOT}
-if [ ! -d "build" ]; then
-  mkdir ${SCRIPT_ROOT}/build
-fi
-echo "Build LLVM? Enter 1 or 2"
+
+# Do builds
+cd ${SCRIPT_ROOT}/llvmlinux/x86_64
+echo "Build LLVM Linux, Clang, and LLVM? Enter 1 or 2"
 BUILD_OPTS=("Yes" "No")
 select yn in "${BUILD_OPTS[@]}"; do
   case $yn in
     "Yes" )
-      cd ${SCRIPT_ROOT}/build
-      print_info "Building llvm in $(pwd)"
-      cmake -G "Unix Makefiles" ../llvm
-      make
+      print_info "Building llvmlinux in $(pwd); target is x86_64"
+      sudo make
       break;;
     "No" )
-      echo "Build of LLVM skipped."
+      echo "Build of LLVM Linux skipped."
       break;;
   esac
 done
 
 
-cd ${SCRIPT_ROOT}/build/tools/clang
-echo "It is a good idea to run the Clang tests to make sure your build works correctly."
-echo "Run 'make test' to run the Clang tests? Enter 1 or 2"
+cho "Run 'make test' on LLVM Linux? Enter 1 or 2"
 BUILD_OPTS=("Yes" "No")
 select yn in "${BUILD_OPTS[@]}"; do
   case $yn in
     "Yes" )
-      print_info "Running Clang  tests in $(pwd)"
+      print_info "Running LLVM Linux tests in $(pwd)"
       sudo make test
       break;;
     "No" )
-      echo "Clang tests not run."
-      break;;
-  esac
-done
-
-
-echo "make install clang? Enter 1 or 2"
-BUILD_OPTS=("Yes" "No")
-select yn in "${BUILD_OPTS[@]}"; do
-  case $yn in
-    "Yes" )
-      print_info "make install on clang in $(pwd)"
-      sudo make install
-      break;;
-    "No" )
-      echo "Clang not installed."
+      echo "LLVM Linux tests not run."
       break;;
   esac
 done
 
 
 print_info "All done!"
+echo -e "To update and rebuild the sources for the target and its dependencies, run:\n\t\tmake sync-all\n\t\tmake\n"
